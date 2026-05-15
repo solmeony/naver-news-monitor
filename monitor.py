@@ -50,47 +50,40 @@ def parse_naver_time(time_text):
 
 async def scrape_keyword(page, keyword):
     url = f"https://search.naver.com/search.naver?where=news&query={keyword}&sm=tab_opt&sort=0"
-    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-    await page.wait_for_timeout(3000)
+
+    await page.goto(url, wait_until="networkidle", timeout=60000)
+
+    # 뉴스 목록 로드 대기 (최대 10초)
+    try:
+        await page.wait_for_selector("ul.list_news", timeout=10000)
+    except Exception:
+        print(f"  [경고] '{keyword}' 뉴스 목록 로드 대기 타임아웃")
+
+    await page.wait_for_timeout(2000)
 
     articles = []
 
-    selectors = [
-        "ul.list_news > li.bx:has(a.news_tit)",
-        "li.bx:has(a.news_tit)",
-        "li.bx:has(a[href*='news.naver'])",
-        "li.bx:has(a[href*='http'])",
-    ]
-
-    items = []
-    for selector in selectors:
-        items = await page.query_selector_all(selector)
-        if items:
-            print(f"  [디버그] '{keyword}' 셀렉터 '{selector}' → {len(items)}개")
-            break
+    # 실제 뉴스 기사만 선택 (div.news_area 포함된 것만)
+    items = await page.query_selector_all("ul.list_news > li.bx")
+    print(f"  [디버그] '{keyword}' ul.list_news li.bx → {len(items)}개")
 
     if not items:
-        all_items = await page.query_selector_all("li.bx")
-        print(f"  [디버그] '{keyword}' 전체 li.bx: {len(all_items)}개")
-        if len(all_items) > 1:
-            html = await all_items[1].inner_html()
-            print(f"  [HTML] {html[:2000]}")
+        # 페이지 전체 HTML 일부 출력해서 구조 파악
+        body = await page.inner_html("body")
+        print(f"  [BODY HTML] {body[:3000]}")
         return articles
 
     for item in items:
         if len(articles) >= 5:
             break
         try:
-            title_el = await item.query_selector("a.news_tit")
+            # 뉴스 기사 영역인지 확인
+            news_area = await item.query_selector("div.news_area")
+            if not news_area:
+                continue
+
+            title_el = await news_area.query_selector("a.news_tit")
             if not title_el:
-                title_el = await item.query_selector("a.title")
-            if not title_el:
-                title_el = await item.query_selector("a[class*='news_tit']")
-            if not title_el:
-                title_el = await item.query_selector("a[class*='title']")
-            if not title_el:
-                html = await item.inner_html()
-                print(f"  [제목없음 HTML] {html[:500]}")
                 continue
 
             title = await title_el.get_attribute("title")
@@ -100,29 +93,20 @@ async def scrape_keyword(page, keyword):
             if not title:
                 continue
 
-            link = await title_el.get_attribute("href")
-            if not link:
-                link = ""
+            link = await title_el.get_attribute("href") or ""
 
-            press_el = await item.query_selector("a.info.press")
+            # 언론사
+            press_el = await news_area.query_selector("a.info.press")
             if not press_el:
-                press_el = await item.query_selector("a.press")
-            if not press_el:
-                press_el = await item.query_selector("span.press")
-            if not press_el:
-                press_el = await item.query_selector("a[class*='press']")
+                press_el = await news_area.query_selector("a.press")
             press = "알수없음"
             if press_el:
                 press = (await press_el.inner_text()).strip()
 
-            time_el = await item.query_selector("span.info")
+            # 시간
+            time_el = await news_area.query_selector("span.info")
             if not time_el:
-                time_el = await item.query_selector("span.date")
-            if not time_el:
-                time_el = await item.query_selector("span[class*='date']")
-            if not time_el:
-                time_el = await item.query_selector("span[class*='time']")
-
+                time_el = await news_area.query_selector("span.date")
             pub_dt = datetime.now(KST)
             if time_el:
                 time_text = (await time_el.inner_text()).strip()
@@ -148,13 +132,30 @@ async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+            ]
         )
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            locale="ko-KR"
+            locale="ko-KR",
+            viewport={"width": 1280, "height": 800},
+            java_script_enabled=True,
         )
+
+        # 자동화 감지 우회
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        """)
+
         page = await context.new_page()
+
+        # 네이버 메인 먼저 방문 (쿠키 세팅)
+        await page.goto("https://www.naver.com", wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(2000)
 
         for keyword in KEYWORDS:
             print(f"검색 중: {keyword}")
@@ -165,7 +166,7 @@ async def main():
             except Exception as e:
                 print(f"  → 오류: {e}")
                 result[keyword] = []
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
 
         await browser.close()
 

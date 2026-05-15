@@ -67,6 +67,11 @@ async def scrape_keyword(page, keyword: str) -> list:
     # 디버깅: 찾은 아이템 수 출력
     print(f"  [디버그] '{keyword}' 아이템 수: {len(items)}")
 
+    # 첫 번째 아이템 HTML 구조 확인
+    if items:
+        html = await items[0].inner_html()
+        print(f"  [HTML] {html[:1000]}")
+    
     for item in items:
         if len(articles) >= 5:
             break

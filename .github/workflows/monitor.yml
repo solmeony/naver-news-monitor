@@ -2,8 +2,8 @@ name: Naver News Monitor
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 매일 UTC 00:00 = KST 09:00
-  workflow_dispatch:       # 수동 실행 버튼도 활성화
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   monitor:

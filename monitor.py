@@ -96,8 +96,11 @@ async def main():
     result = {}
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
+browser = await p.chromium.launch(
+    headless=True,
+    args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+)        
+context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
         )
         page = await context.new_page()

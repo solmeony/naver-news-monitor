@@ -20,9 +20,8 @@ jobs:
 
       - name: 패키지 설치
         run: |
-          pip install -r requirements.txt
-          playwright install chromium
-          playwright install-deps chromium
+          pip install playwright==1.49.0 requests==2.31.0
+          playwright install chromium --with-deps
 
       - name: 뉴스 모니터링 실행
         env:

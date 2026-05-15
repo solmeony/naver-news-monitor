@@ -20,12 +20,11 @@ jobs:
 
       - name: 패키지 설치
         run: |
-          sudo apt-get update
           pip install -r requirements.txt
           playwright install chromium
-          playwright install-deps chromium || true
 
       - name: 뉴스 모니터링 실행
         env:
           GAS_WEBHOOK_URL: ${{ secrets.GAS_WEBHOOK_URL }}
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 0
         run: python monitor.py
